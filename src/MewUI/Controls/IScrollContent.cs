@@ -1,11 +1,11 @@
 namespace Aprillz.MewUI.Controls;
 
 /// <summary>
-/// Minimal internal contract for scroll-driven content.
-/// The scroll owner (e.g., <see cref="ScrollViewer"/>) provides viewport and offset,
+/// Contract for scroll-driven content.
+/// The scroll owner (e.g., <see cref="ScrollHost"/>) provides viewport and offset,
 /// while the content reports its logical extent and renders only what is necessary.
 /// </summary>
-internal interface IScrollContent
+public interface IScrollContent
 {
     /// <summary>
     /// Gets the logical content extent in DIPs.
@@ -22,4 +22,3 @@ internal interface IScrollContent
     /// </summary>
     void SetOffset(Point offset);
 }
-

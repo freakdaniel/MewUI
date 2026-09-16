@@ -873,7 +873,7 @@ public abstract partial class Element : MewObject
 
         for (var current = Parent; current != null; current = current.Parent)
         {
-            if (current is ScrollViewer viewer && viewer.IsScrollableContentDescendant(child))
+            if (current is ScrollHost viewer && viewer.IsScrollableContentDescendant(child))
             {
                 x += viewer.HorizontalOffset;
                 y += viewer.VerticalOffset;
@@ -900,7 +900,7 @@ public abstract partial class Element : MewObject
 
         for (var current = Parent; current != null; current = current.Parent)
         {
-            if (current is ScrollViewer viewer && viewer.IsScrollableContentDescendant(child))
+            if (current is ScrollHost viewer && viewer.IsScrollableContentDescendant(child))
             {
                 x += viewer.HorizontalOffset;
                 y += viewer.VerticalOffset;

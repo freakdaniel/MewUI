@@ -5320,6 +5320,73 @@ public static class ControlExtensions
         return scrollViewer;
     }
 
+    /// <summary>
+    /// Sets the vertical scroll mode on a custom scroll host.
+    /// </summary>
+    public static ScrollHost VerticalScroll(this ScrollHost scrollHost, ScrollMode mode)
+    {
+        scrollHost.VerticalScroll = mode;
+        return scrollHost;
+    }
+
+    /// <summary>
+    /// Sets the horizontal scroll mode on a custom scroll host.
+    /// </summary>
+    public static ScrollHost HorizontalScroll(this ScrollHost scrollHost, ScrollMode mode)
+    {
+        scrollHost.HorizontalScroll = mode;
+        return scrollHost;
+    }
+
+    /// <summary>
+    /// Disables vertical scrolling on a custom scroll host.
+    /// </summary>
+    public static ScrollHost NoVerticalScroll(this ScrollHost scrollHost) => scrollHost.VerticalScroll(ScrollMode.Disabled);
+
+    /// <summary>
+    /// Enables automatic vertical scrolling on a custom scroll host.
+    /// </summary>
+    public static ScrollHost AutoVerticalScroll(this ScrollHost scrollHost) => scrollHost.VerticalScroll(ScrollMode.Auto);
+
+    /// <summary>
+    /// Shows vertical scroll chrome on a custom scroll host.
+    /// </summary>
+    public static ScrollHost ShowVerticalScroll(this ScrollHost scrollHost) => scrollHost.VerticalScroll(ScrollMode.Visible);
+
+    /// <summary>
+    /// Disables horizontal scrolling on a custom scroll host.
+    /// </summary>
+    public static ScrollHost NoHorizontalScroll(this ScrollHost scrollHost) => scrollHost.HorizontalScroll(ScrollMode.Disabled);
+
+    /// <summary>
+    /// Enables automatic horizontal scrolling on a custom scroll host.
+    /// </summary>
+    public static ScrollHost AutoHorizontalScroll(this ScrollHost scrollHost) => scrollHost.HorizontalScroll(ScrollMode.Auto);
+
+    /// <summary>
+    /// Shows horizontal scroll chrome on a custom scroll host.
+    /// </summary>
+    public static ScrollHost ShowHorizontalScroll(this ScrollHost scrollHost) => scrollHost.HorizontalScroll(ScrollMode.Visible);
+
+    /// <summary>
+    /// Sets both scroll modes on a custom scroll host.
+    /// </summary>
+    public static ScrollHost Scroll(this ScrollHost scrollHost, ScrollMode vertical, ScrollMode horizontal)
+    {
+        scrollHost.VerticalScroll = vertical;
+        scrollHost.HorizontalScroll = horizontal;
+        return scrollHost;
+    }
+
+    /// <summary>
+    /// Adds a scroll state change handler to a custom scroll host.
+    /// </summary>
+    public static ScrollHost OnScrollChanged(this ScrollHost scrollHost, Action handler)
+    {
+        scrollHost.ScrollChanged += handler;
+        return scrollHost;
+    }
+
     #endregion
 
     #region ContentControl

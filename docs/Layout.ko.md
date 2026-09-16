@@ -78,7 +78,7 @@ Measure는 주어진 제약(availableSize) 아래에서 요소가 원하는 크�
 
 `DesiredSize`는 프레임워크가 자동으로 픽셀 라운딩합니다. `Window.UseLayoutRounding`이 true(기본값)이면 `Element.Measure`가 clamp된 크기를 `Window.DpiScale` 기준의 크기 전용 라운딩 헬퍼로 반올림합니다. 컨트롤/패널 저자는 `MeasureOverride`/`MeasureContent`의 반환값을 직접 라운딩할 필요가 없습니다.
 
-저자가 신경 써야 하는 부분은 자식에게 넘길 중간값을 라운딩해서, Measure 패스가 자식에게 준 제약과 이후 Arrange가 같은 자식에 대해 계산하는 값이 서로 어긋나지 않게 하는 것입니다. `ScrollViewer.MeasureContent`는 콘텐츠를 측정하기 전에 뷰포트 크기를 이렇게 라운딩하며, `ArrangeContent`에서 재사용할 것과 같은 `dpiScale`을 사용합니다. 이렇게 하지 않으면 분수 DPI에서 Measure가 계산한 뷰포트와 Arrange가 계산한 뷰포트가 장치 픽셀 하나만큼 어긋나 콘텐츠가 잘리는 문제가 생깁니다.
+저자가 신경 써야 하는 부분은 자식에게 넘길 중간값을 라운딩해서, Measure 패스가 자식에게 준 제약과 이후 Arrange가 같은 자식에 대해 계산하는 값이 서로 어긋나지 않게 하는 것입니다. `ScrollHost.MeasureContent`는 콘텐츠를 측정하기 전에 뷰포트 크기를 이렇게 라운딩하며, `ArrangeContent`에서 재사용할 것과 같은 `dpiScale`을 사용합니다. 이렇게 하지 않으면 분수 DPI에서 Measure가 계산한 뷰포트와 Arrange가 계산한 뷰포트가 장치 픽셀 하나만큼 어긋나 콘텐츠가 잘리는 문제가 생깁니다.
 
 ## Arrange
 
@@ -105,8 +105,8 @@ Arrange는 각 요소의 최종 위치/크기(윈도우 절대 좌표의 `Bounds
 | 헬퍼 | 라운딩 방식 | 용도 |
 |---|---|---|
 | `SnapBoundsRectToPixels(rect, dpiScale)` | 각 edge를 독립적으로 반올림(최대 1px 늘거나 줄 수 있음) | 보더/배경 등 그리기 지오메트리, 예: `FrameworkElement.GetSnappedBorderBounds` |
-| `SnapConstraintRectToPixels(rect, dpiScale)` | 위와 같은 알고리즘 | Measure 시점의 constraint 사각형(`ScrollViewer.MeasureContent` 참고) |
-| `SnapViewportRectToPixels(rect, dpiScale)` | 좌/상단은 floor, 우/하단은 ceil(절대 줄어들지 않음) | 스크롤 뷰포트, 클립 사각형, 예: `ScrollViewer.GetContentViewportBounds` |
+| `SnapConstraintRectToPixels(rect, dpiScale)` | 위와 같은 알고리즘 | Measure 시점의 constraint 사각형(`ScrollHost.MeasureContent` 참고) |
+| `SnapViewportRectToPixels(rect, dpiScale)` | 좌/상단은 floor, 우/하단은 ceil(절대 줄어들지 않음) | 스크롤 뷰포트, 클립 사각형, 예: `ScrollHost.GetContentViewportBounds` |
 | `MakeClipRect(rect, dpiScale, rightPx = 0, bottomPx = 0)` | 외향(outward) 스냅, 선택적으로 우/하단을 정수 device pixel만큼 확장 | Render 시점의 클립 사각형. `TextBase`, `ContextMenu`, `GridView`는 기본값(순수 외향 스냅)으로 사용 |
 | `SnapThicknessToPixels(thicknessDip, dpiScale, minPixels)` | 최소값을 보장하며 정수 픽셀 개수로 반올림 | 분수 DPI에서도 사라지지 않아야 하는 보더/스트로크 두께 |
 | `RoundSizeToPixels` / `RoundRectToPixels` | 위치와 크기를 독립적으로 반올림 | 프레임워크가 `DesiredSize`/`Bounds`에 내부적으로 사용하는 방식 |
@@ -127,7 +127,7 @@ Render는 Bounds와 현재 visual 상태로 실제 픽셀을 그립니다.
 
 텍스트/스트로크/안티앨리어싱은 논리 Bounds 밖으로 0.5px 정도 오버행할 수 있습니다. 상위에서 자식의 Bounds에 정확히 맞춰 클립을 걸면 그 오버행이 잘려 오른쪽/아래쪽 1px이 사라진 것처럼 보입니다.
 
-실제로 쓰이는 패턴은 다음과 같습니다(`ScrollViewer.GetContentClipBounds` 참고).
+실제로 쓰이는 패턴은 다음과 같습니다(`ScrollHost.GetContentClipBounds` 참고).
 
 1) 뷰포트/콘텐츠 사각형을 DIP로 계산합니다.
 2) 외향으로 스냅합니다(`SnapViewportRectToPixels`, 절대 줄어들지 않음).
@@ -152,19 +152,25 @@ Render는 Bounds와 현재 visual 상태로 실제 픽셀을 그립니다.
 
 ### 오프셋
 
-`ScrollViewer.HorizontalOffset`/`VerticalOffset` setter는 `InvalidateVisual()`만 호출하고 `InvalidateMeasure()`나 `InvalidateArrange()`는 호출하지 않습니다. 즉 순수 오프셋 변경은 Render만으로 처리되며 콘텐츠는 안정적인 문서 좌표에 배치된 상태를 유지합니다. Extent/Viewport(Measure가 필요한 값)는 콘텐츠나 가용 크기가 실제로 바뀔 때만 다시 계산됩니다.
+`ScrollHost.HorizontalOffset`/`VerticalOffset` setter는 `InvalidateVisual()`만 호출하고 `InvalidateMeasure()`나 `InvalidateArrange()`는 호출하지 않습니다. 즉 순수 오프셋 변경은 Render만으로 처리되며 콘텐츠는 안정적인 문서 좌표에 배치된 상태를 유지합니다. Extent/Viewport(Measure가 필요한 값)는 콘텐츠나 가용 크기가 실제로 바뀔 때만 다시 계산됩니다.
 
-`ScrollViewer.MeasureContent`는 의도적으로 `_scroll` 상태(메트릭, 오프셋)나 스크롤바의 `IsVisible`/`ViewportSize`/`Max`를 건드리지 않습니다. Measure는 가상의/제약 없는 크기로 호출될 수 있으므로(예: 팝업 소유자가 매 프레임 natural size를 확인하는 경우), 거기서 공유 스크롤 상태를 바꾸면 화면에 표시된 스크롤바가 깨지거나 사용자의 스크롤 오프셋이 리셋될 수 있습니다. 이런 변경은 모두 `ArrangeContent`에서 이루어지며, 이 시점의 뷰포트는 실제로 표시되는 크기를 반영합니다.
+`ScrollHost.MeasureContent`는 의도적으로 `_scroll` 상태(메트릭, 오프셋)나 스크롤 chrome을 건드리지 않습니다. Measure는 가상의/제약 없는 크기로 호출될 수 있으므로(예: 팝업 소유자가 매 프레임 natural size를 확인하는 경우), 거기서 공유 스크롤 상태를 바꾸면 화면에 표시된 chrome이 깨지거나 사용자의 스크롤 오프셋이 리셋될 수 있습니다. 이런 변경은 모두 `ArrangeContent`에서 이루어지며, 이 시점의 뷰포트는 실제로 표시되는 크기를 반영합니다.
 
 ### 스크롤 중 업데이트되는 것
 
 1) `ArrangeContent`가 일반 콘텐츠는 안정적인 문서 좌표의 뷰포트 사각형에 자식을 배치하고, 가상화/스크롤 인지 콘텐츠(`IScrollContent`)는 `SetViewport`/`SetOffset`을 호출한 뒤 뷰포트 사각형 그대로 자식을 배치합니다(이 경우 자식은 Arrange로 이동되는 게 아니라 주어진 오프셋을 바탕으로 내부적으로 스스로 위치를 잡습니다).
 2) 콘텐츠는 뷰포트 클립 아래에서 렌더링됩니다(위 클립 규칙 참고).
-3) 스크롤바의 range/value가 현재 오프셋/뷰포트와 동기화됩니다(`SyncBars`).
+3) 커스텀 스크롤 chrome이 현재 오프셋/뷰포트와 동기화됩니다(`SyncScrollChrome`). 표준 `ScrollViewer`는 이 hook으로 스크롤바 range/value를 동기화합니다.
+
+### 커스텀 스크롤 host
+
+`ScrollHost`는 공통 메트릭, DPI 인식 clamp, 문서 좌표 배치, 렌더 변환, culling, hit-test, focus-into-view, wheel 라우팅, `ScrollChanged` 통지를 제공합니다. `ScrollViewer`는 스크롤바 chrome을 추가하는 표준 sealed 구현입니다.
+
+다른 스크롤 물리, 커스텀 chrome, 특수 렌더 경로가 필요하면 `ScrollHost`에서 파생하세요. 입력은 `HandleMouseWheel` 또는 `ScrollAxisByNotches`, 콘텐츠는 `ArrangeScrollableContent` 또는 `RenderScrollableContent`, 커스텀 컨트롤은 `*ScrollChrome` hook을 오버라이드합니다. 커스텀 스크롤바 같은 private visual child는 protected `AttachChild`로 연결하고 `VisitScrollChrome`에서 반환해야 합니다.
 
 ## 금지 패턴(성능 문제나 레이아웃 스래싱 원인)
 
 - Measure/Arrange 중 값 비교 없이 레이아웃 영향 속성을 계속 set: 잘해야 재측정 결과가 버려지는 낭비고([Measure 규칙](#규칙) 참고), 최악의 경우 값이 안정화되지 않아 요소가 매 프레임 스스로를 다시 dirty로 만들어 update pass가 계속 반복됩니다.
 - `OnRender`에서 `InvalidateMeasure()`/`InvalidateArrange()`를 유발: 현재 프레임 자체는 안전하지만(Render는 중단되지 않음) 바로 다음에 새 update pass가 예약되며, 조건 없이 이렇게 하면 매 프레임 반복됩니다.
 - 캐시된 `GetDpi()`/`GetDpiCached()`를 쓰지 않고 핫 패스에서 직접 `Parent`를 타고 올라가며 DPI를 다시 계산.
-- 오프셋만 바뀌었는데 스크롤할 때마다 `InvalidateMeasure()`/`InvalidateArrange()`를 호출: `ScrollViewer`처럼 오프셋 전용 변경(`InvalidateVisual()`)만 사용해야 합니다.
+- 오프셋만 바뀌었는데 스크롤할 때마다 `InvalidateMeasure()`/`InvalidateArrange()`를 호출: `ScrollHost`처럼 오프셋 전용 변경(`InvalidateVisual()`)만 사용해야 합니다.

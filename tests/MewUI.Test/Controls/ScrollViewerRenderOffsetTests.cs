@@ -30,6 +30,23 @@ public sealed class ScrollViewerRenderOffsetTests
     }
 
     [TestMethod]
+    public void ScrollBarSyncUsesLiveOffsetBeforePublicOffsetIsPublished()
+    {
+        using var host = CreateHost();
+        var verticalBar = (ScrollBar?)VisualTree.Find(
+            host.Viewer,
+            static element => element is ScrollBar { Orientation: Orientation.Vertical });
+
+        Assert.IsNotNull(verticalBar);
+
+        host.Viewer.SetScrollOffsets(0, 10);
+        host.Viewer.SetScrollOffsets(0, 20);
+
+        Assert.AreEqual(20, host.Viewer.VerticalOffset, 0.01);
+        Assert.AreEqual(20, verticalBar.Value, 0.01);
+    }
+
+    [TestMethod]
     public void RenderTranslatesContentAndHitTestUsesDocumentCoordinates()
     {
         using var host = CreateHost();

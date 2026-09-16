@@ -78,7 +78,7 @@ Measure calculates how large an element *wants* to be under a given constraint.
 
 `DesiredSize` is automatically pixel-rounded by the framework: `Element.Measure` rounds the clamped size via a size-only rounding helper, driven by `Window.DpiScale`, whenever `Window.UseLayoutRounding` is true (the default). Control/panel authors do not need to round their own `MeasureOverride`/`MeasureContent` return value.
 
-What *is* the author's responsibility is rounding intermediate values computed for children, so the numbers a Measure pass hands to a child's constraint match what Arrange later computes for the same child. `ScrollViewer.MeasureContent` does this for its viewport size before measuring content, using the same `dpiScale` it will reuse in `ArrangeContent` - without that, the viewport computed in Measure can differ from the one computed in Arrange by a device pixel at fractional DPI, causing content clipping.
+What *is* the author's responsibility is rounding intermediate values computed for children, so the numbers a Measure pass hands to a child's constraint match what Arrange later computes for the same child. `ScrollHost.MeasureContent` does this for its viewport size before measuring content, using the same `dpiScale` it will reuse in `ArrangeContent` - without that, the viewport computed in Measure can differ from the one computed in Arrange by a device pixel at fractional DPI, causing content clipping.
 
 ## Arrange
 
@@ -105,8 +105,8 @@ What authors *do* need to snap by hand is any additional rect they compute for p
 | Helper | Rounding | Use for |
 |---|---|---|
 | `SnapBoundsRectToPixels(rect, dpiScale)` | Rounds each edge independently (may shrink/grow by up to 1px) | Border/background paint geometry, e.g. `FrameworkElement.GetSnappedBorderBounds` |
-| `SnapConstraintRectToPixels(rect, dpiScale)` | Same algorithm as above | Measure-time constraint rects (see `ScrollViewer.MeasureContent`) |
-| `SnapViewportRectToPixels(rect, dpiScale)` | Floors left/top, ceils right/bottom (never shrinks) | Scroll viewports and clip rects, e.g. `ScrollViewer.GetContentViewportBounds` |
+| `SnapConstraintRectToPixels(rect, dpiScale)` | Same algorithm as above | Measure-time constraint rects (see `ScrollHost.MeasureContent`) |
+| `SnapViewportRectToPixels(rect, dpiScale)` | Floors left/top, ceils right/bottom (never shrinks) | Scroll viewports and clip rects, e.g. `ScrollHost.GetContentViewportBounds` |
 | `MakeClipRect(rect, dpiScale, rightPx = 0, bottomPx = 0)` | Outward snap, optionally expanded by whole device pixels on right/bottom | Render-time clip rects; used with the defaults (pure outward snap) by `TextBase`, `ContextMenu`, `GridView` |
 | `SnapThicknessToPixels(thicknessDip, dpiScale, minPixels)` | Rounds to an integer pixel count with a floor | Border/stroke thickness that must stay visible at fractional DPI |
 | `RoundSizeToPixels` / `RoundRectToPixels` | Position and size rounded independently | What the framework uses internally for `DesiredSize`/`Bounds` |
@@ -127,7 +127,7 @@ Render draws the element using `Bounds` and current visual state.
 
 Text, strokes, and antialiasing can extend half a pixel outside logical bounds. If an ancestor clips exactly at the child's bounds, that overhang gets cut and looks like a missing right/bottom pixel.
 
-The pattern used in practice (see `ScrollViewer.GetContentClipBounds`):
+The pattern used in practice (see `ScrollHost.GetContentClipBounds`):
 
 1) Compute the viewport/content rect in DIP.
 2) Snap it outward (`SnapViewportRectToPixels`, never shrinks).
@@ -152,19 +152,25 @@ The pattern used in practice (see `ScrollViewer.GetContentClipBounds`):
 
 ### Offsets
 
-`ScrollViewer.HorizontalOffset`/`VerticalOffset` setters call `InvalidateVisual()` only, never `InvalidateMeasure()` or `InvalidateArrange()`: pure offset changes stay Render-only, while content remains arranged in stable document coordinates. Extent/viewport (which do require Measure) are only recomputed when content or available size actually changes.
+`ScrollHost.HorizontalOffset`/`VerticalOffset` setters call `InvalidateVisual()` only, never `InvalidateMeasure()` or `InvalidateArrange()`: pure offset changes stay Render-only, while content remains arranged in stable document coordinates. Extent/viewport (which do require Measure) are only recomputed when content or available size actually changes.
 
-`ScrollViewer.MeasureContent` deliberately does **not** mutate `_scroll` state (metrics, offset) or the scrollbars' `IsVisible`/`ViewportSize`/`Max`: Measure can run with a hypothetical/unconstrained size (e.g. a popup owner probing natural size every frame), and mutating shared scroll state there would corrupt the displayed scrollbar or reset the user's scroll offset. All of that mutation happens in `ArrangeContent`, where the viewport reflects the size actually being displayed.
+`ScrollHost.MeasureContent` deliberately does **not** mutate `_scroll` state (metrics, offset) or scroll chrome: Measure can run with a hypothetical/unconstrained size (e.g. a popup owner probing natural size every frame), and mutating shared scroll state there would corrupt the displayed chrome or reset the user's scroll offset. All of that mutation happens in `ArrangeContent`, where the viewport reflects the size actually being displayed.
 
 ### What updates during scroll
 
 1) `ArrangeContent` arranges plain content at the viewport rect in stable document coordinates, or calls `IScrollContent.SetViewport`/`SetOffset` and arranges the child at the viewport rect unchanged (for virtualizing/scroll-aware content, which positions itself internally from the given offset rather than being translated by `Arrange`).
 2) Content renders under a viewport clip (see Clipping rules above).
-3) Scrollbar ranges/values are synced to the current offset/viewport (`SyncBars`).
+3) Custom scroll chrome is synced to the current offset/viewport (`SyncScrollChrome`); the standard `ScrollViewer` uses this hook for its scrollbar ranges and values.
+
+### Custom scroll hosts
+
+`ScrollHost` contains the common metrics, DPI-aware clamping, document-space arrangement, render translation, culling, hit testing, focus-into-view, wheel routing, and `ScrollChanged` notification. `ScrollViewer` is the standard sealed implementation that adds scrollbar chrome.
+
+Derive from `ScrollHost` when a control needs different scroll physics, custom chrome, or a specialized render path. Override `HandleMouseWheel` or `ScrollAxisByNotches` for input behavior, `ArrangeScrollableContent` or `RenderScrollableContent` for content behavior, and the `*ScrollChrome` hooks for custom controls. Private visual children such as custom scrollbars should be attached with the protected `AttachChild` helper and returned from `VisitScrollChrome`.
 
 ## Anti-patterns (cause performance problems or layout thrashing)
 
 - Setting layout-affecting properties during Measure/Arrange without comparing old/new values first: at best a wasted re-measure is discarded (see [Measure rules](#rules)); at worst the property never stabilizes and the element re-dirties itself every frame, one full update pass at a time.
 - Triggering `InvalidateMeasure()`/`InvalidateArrange()` from `OnRender`: safe for the current frame (Render can't be interrupted), but schedules a fresh update pass immediately after, which repeats every frame if done unconditionally.
 - Re-implementing DPI resolution by walking `Parent` in a hot path instead of calling the cached `GetDpi()`/`GetDpiCached()`.
-- Calling `InvalidateMeasure()`/`InvalidateArrange()` on every scroll tick when only the offset changed - use offset-only mutation (`InvalidateVisual()`) as `ScrollViewer` does.
+- Calling `InvalidateMeasure()`/`InvalidateArrange()` on every scroll tick when only the offset changed - use offset-only mutation (`InvalidateVisual()`) as `ScrollHost` does.

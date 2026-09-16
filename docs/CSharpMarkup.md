@@ -705,6 +705,9 @@ new ScrollViewer()
 | `ShowHorizontalScroll()` | Always show horizontal scroll |
 | `Content(Element)` | Content to scroll |
 
+The same scroll-mode and `OnScrollChanged` extension methods are available for custom controls derived
+from `ScrollHost`. `ScrollHost` is abstract because custom hosts choose their own scroll chrome.
+
 ---
 
 ## Panel Extension Methods

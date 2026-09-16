@@ -704,6 +704,9 @@ new ScrollViewer()
 | `ShowHorizontalScroll()` | 수평 스크롤 항상 표시 |
 | `Content(Element)` | 스크롤할 내용 |
 
+`ScrollHost`에서 파생한 커스텀 컨트롤에도 같은 스크롤 모드 및 `OnScrollChanged` 확장 메서드를 사용할 수
+있습니다. `ScrollHost`는 커스텀 host가 자체 스크롤 chrome을 선택하므로 abstract입니다.
+
 ---
 
 ## Panel 확장 메서드
