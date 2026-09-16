@@ -51,6 +51,8 @@ public sealed partial class MarkupTextBlock : TextBlockBase
     protected override void OnGetTextPaintSpans(IList<TextPaintSpan> output)
         => _document.AppendPaintSpans(output);
 
+    protected override bool CanCacheTextPaintSpans => true;
+
     private void ApplyMarkup(string markup)
     {
         _document = MarkupTextParser.Parse(markup);

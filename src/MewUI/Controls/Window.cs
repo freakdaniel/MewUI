@@ -2128,7 +2128,7 @@ public partial class Window : ContentControl, ILayoutRoundingHost
             // Offscreen: snap to avoid wasting animations on invisible pixels.
             // SkipViewportCull elements (e.g. transformed subtrees) always animate since their
             // bounds don't reflect true visibility.
-            bool onscreen = element.SkipViewportCull || viewport.IntersectsWith(element.Bounds);
+            bool onscreen = element.SkipViewportCull || viewport.IntersectsWith(element.GetRenderBounds());
             element.ResolveVisualStateInternal(snap: !onscreen);
         }
 
@@ -2494,7 +2494,16 @@ public partial class Window : ContentControl, ILayoutRoundingHost
     /// <summary>
     /// Requests that the window be redrawn.
     /// </summary>
-    public override void InvalidateVisual() => RequestRender();
+    public override void InvalidateVisual()
+    {
+        if (IsVisualInvalidationPending)
+        {
+            return;
+        }
+
+        base.InvalidateVisual();
+        RequestRender();
+    }
 
     private void InvalidateBackend()
     {
@@ -3042,6 +3051,11 @@ public partial class Window : ContentControl, ILayoutRoundingHost
                 phaseStart = profiling ? Stopwatch.GetTimestamp() : 0;
                 using (profiling ? ProfilerMarkers.ContentRender.Auto() : default)
                 {
+                    // RenderFrameCore paints EffectiveVisualRoot directly instead of rendering the
+                    // Window element itself. Clear the root's coalescing marker at the same point
+                    // so the next visual invalidation can schedule a fresh frame.
+                    ClearVisualInvalidation();
+
                     if (_hostedPortalRoot != null)
                     {
                         // The portal subtree is arranged in the owner's coordinate space; shift it back

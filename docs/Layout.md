@@ -152,13 +152,13 @@ The pattern used in practice (see `ScrollViewer.GetContentClipBounds`):
 
 ### Offsets
 
-`ScrollViewer.HorizontalOffset`/`VerticalOffset` setters call `InvalidateArrange()` only, never `InvalidateMeasure()`: pure offset changes stay Arrange+Render only. Extent/viewport (which do require Measure) are only recomputed when content or available size actually changes.
+`ScrollViewer.HorizontalOffset`/`VerticalOffset` setters call `InvalidateVisual()` only, never `InvalidateMeasure()` or `InvalidateArrange()`: pure offset changes stay Render-only, while content remains arranged in stable document coordinates. Extent/viewport (which do require Measure) are only recomputed when content or available size actually changes.
 
 `ScrollViewer.MeasureContent` deliberately does **not** mutate `_scroll` state (metrics, offset) or the scrollbars' `IsVisible`/`ViewportSize`/`Max`: Measure can run with a hypothetical/unconstrained size (e.g. a popup owner probing natural size every frame), and mutating shared scroll state there would corrupt the displayed scrollbar or reset the user's scroll offset. All of that mutation happens in `ArrangeContent`, where the viewport reflects the size actually being displayed.
 
 ### What updates during scroll
 
-1) `ArrangeContent` arranges the child at `viewport - offset` (for plain content), or calls `IScrollContent.SetViewport`/`SetOffset` and arranges the child at the viewport rect unchanged (for virtualizing/scroll-aware content, which positions itself internally from the given offset rather than being translated by `Arrange`).
+1) `ArrangeContent` arranges plain content at the viewport rect in stable document coordinates, or calls `IScrollContent.SetViewport`/`SetOffset` and arranges the child at the viewport rect unchanged (for virtualizing/scroll-aware content, which positions itself internally from the given offset rather than being translated by `Arrange`).
 2) Content renders under a viewport clip (see Clipping rules above).
 3) Scrollbar ranges/values are synced to the current offset/viewport (`SyncBars`).
 
@@ -167,4 +167,4 @@ The pattern used in practice (see `ScrollViewer.GetContentClipBounds`):
 - Setting layout-affecting properties during Measure/Arrange without comparing old/new values first: at best a wasted re-measure is discarded (see [Measure rules](#rules)); at worst the property never stabilizes and the element re-dirties itself every frame, one full update pass at a time.
 - Triggering `InvalidateMeasure()`/`InvalidateArrange()` from `OnRender`: safe for the current frame (Render can't be interrupted), but schedules a fresh update pass immediately after, which repeats every frame if done unconditionally.
 - Re-implementing DPI resolution by walking `Parent` in a hot path instead of calling the cached `GetDpi()`/`GetDpiCached()`.
-- Calling `InvalidateMeasure()` on every scroll tick when only the offset changed - use offset-only mutation (`InvalidateArrange()`) as `ScrollViewer` does.
+- Calling `InvalidateMeasure()`/`InvalidateArrange()` on every scroll tick when only the offset changed - use offset-only mutation (`InvalidateVisual()`) as `ScrollViewer` does.

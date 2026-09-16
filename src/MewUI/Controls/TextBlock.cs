@@ -82,10 +82,13 @@ public partial class TextBlock : TextBlockBase
         }
     }
 
+    protected override bool CanCacheTextPaintSpans => true;
+
     private void OnInlinesChanged(RunChange change)
     {
         if (change == RunChange.Paint)
         {
+            InvalidateTextPaintSpans();
             InvalidateVisual();
             return;
         }

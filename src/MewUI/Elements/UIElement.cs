@@ -510,6 +510,11 @@ public abstract partial class UIElement : Element
             MarkRendered();
         }
 
+        // Clear the coalescing marker before drawing. A descendant can invalidate this element
+        // while the subtree is being rendered; that new request must remain pending for the next
+        // frame instead of being erased at the end of this one.
+        ClearVisualInvalidation();
+
         using (DevToolsGate.IsSupported ? PerformanceProfiler.Instance.SampleElement(GetType(), ProfilerSampleCategory.Render, this) : default)
         {
             // Outside the cache branch: the cached bitmap is the element's own pixels, so fading it

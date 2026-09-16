@@ -27,6 +27,7 @@ public abstract partial class Element : MewObject
     internal int ContextVersion => _contextVersion;
     private Size _lastMeasureConstraint;
     private bool _hasMeasureConstraint;
+    private bool _visualInvalidationPending;
 
     private protected override bool IsInheritedCacheCurrent() => _inheritedCacheVersion == _contextVersion;
 
@@ -132,6 +133,14 @@ public abstract partial class Element : MewObject
                     else if (IsArrangeDirty)
                     {
                         value.InvalidateArrange();
+                    }
+
+                    // A detached element can receive a render-affecting property change before it
+                    // is attached. Reconnect that pending repaint to the new render root instead
+                    // of waiting for a second visual change after attachment.
+                    if (_visualInvalidationPending)
+                    {
+                        value.InvalidateVisual();
                     }
                 }
 
@@ -420,6 +429,14 @@ public abstract partial class Element : MewObject
     /// </summary>
     public bool IsArrangeDirty { get; private set; } = true;
 
+    // Visual invalidation is a render request, not a layout state. The flag is cleared by the
+    // render entry point after the element is known to reach the current frame. Keeping it here
+    // lets a burst of child updates share one walk to the window without losing a later update
+    // after an ancestor has already rendered.
+    internal bool IsVisualInvalidationPending => _visualInvalidationPending;
+
+    internal void ClearVisualInvalidation() => _visualInvalidationPending = false;
+
     /// <summary>
     /// Measures the element and determines its desired size.
     /// </summary>
@@ -590,16 +607,22 @@ public abstract partial class Element : MewObject
     /// Invalidates the visual representation, causing a repaint.
     /// </summary>
     /// <remarks>
-    /// Unlike <see cref="InvalidateMeasure"/> and <see cref="InvalidateArrange"/>, this walk is
-    /// intentionally left unbounded: bounding it would require a per-element dirty flag that gets
-    /// cleared on render, but <see cref="Render"/> is bypassed by <c>UIElement</c>'s sealed
-    /// override (which never calls the base implementation), so no in-scope hook exists to clear
-    /// such a flag. Since every element defaults to "dirty", an unclearable flag would get stuck
-    /// true and silently stop all repaint propagation after the first call. Left unoptimized until
-    /// UIElement gains a render-completion hook.
+    /// Repeated invalidations are coalesced until this element reaches a render pass. If an
+    /// element remains culled, its pending state is retained so a later scroll or layout pass can
+    /// still paint the newest content. A pending descendant still forwards an invalidation when
+    /// its ancestor has already rendered, which keeps visibility and state changes reliable.
     /// </remarks>
-    public virtual void InvalidateVisual() =>
+    public virtual void InvalidateVisual()
+    {
+        if (_visualInvalidationPending &&
+            (Parent is not Element parent || parent.IsVisualInvalidationPending))
+        {
+            return;
+        }
+
+        _visualInvalidationPending = true;
         Parent?.InvalidateVisual();
+    }
 
     /// <summary>
     /// Called when the parent element changes.
@@ -625,6 +648,7 @@ public abstract partial class Element : MewObject
     public virtual void Render(IGraphicsContext context)
     {
         OnRender(context);
+        ClearVisualInvalidation();
     }
 
     /// <summary>
@@ -789,8 +813,9 @@ public abstract partial class Element : MewObject
             throw new InvalidOperationException("The specified element is not an ancestor of this element.");
         }
 
-        double dx = Bounds.X - ancestor.Bounds.X;
-        double dy = Bounds.Y - ancestor.Bounds.Y;
+        var scrollOffset = GetRenderScrollOffsetToAncestor(ancestor);
+        double dx = Bounds.X - ancestor.Bounds.X - scrollOffset.X;
+        double dy = Bounds.Y - ancestor.Bounds.Y - scrollOffset.Y;
         return new TranslateGeneralTransform(dx, dy);
     }
 
@@ -833,9 +858,64 @@ public abstract partial class Element : MewObject
             throw new InvalidOperationException("The specified element is not in the same visual tree.");
         }
 
-        double dx = Bounds.X - visual.Bounds.X;
-        double dy = Bounds.Y - visual.Bounds.Y;
+        var sourceScrollOffset = GetRenderScrollOffsetToRoot();
+        var targetScrollOffset = visual.GetRenderScrollOffsetToRoot();
+        double dx = Bounds.X - sourceScrollOffset.X - visual.Bounds.X + targetScrollOffset.X;
+        double dy = Bounds.Y - sourceScrollOffset.Y - visual.Bounds.Y + targetScrollOffset.Y;
         return new TranslateGeneralTransform(dx, dy);
+    }
+
+    private Point GetRenderScrollOffsetToAncestor(Element ancestor)
+    {
+        double x = 0;
+        double y = 0;
+        Element child = this;
+
+        for (var current = Parent; current != null; current = current.Parent)
+        {
+            if (current is ScrollViewer viewer && viewer.IsScrollableContentDescendant(child))
+            {
+                x += viewer.HorizontalOffset;
+                y += viewer.VerticalOffset;
+            }
+
+            if (ReferenceEquals(current, ancestor))
+            {
+                return new Point(x, y);
+            }
+
+            child = current;
+        }
+
+        // TransformToAncestor validates the relationship before calling this helper. Keep a
+        // defensive exception here so the method remains correct if that ordering changes.
+        throw new InvalidOperationException("The specified element is not an ancestor of this element.");
+    }
+
+    private Point GetRenderScrollOffsetToRoot()
+    {
+        double x = 0;
+        double y = 0;
+        Element child = this;
+
+        for (var current = Parent; current != null; current = current.Parent)
+        {
+            if (current is ScrollViewer viewer && viewer.IsScrollableContentDescendant(child))
+            {
+                x += viewer.HorizontalOffset;
+                y += viewer.VerticalOffset;
+            }
+
+            child = current;
+        }
+
+        return new Point(x, y);
+    }
+
+    internal Rect GetRenderBounds()
+    {
+        var scrollOffset = GetRenderScrollOffsetToRoot();
+        return Bounds.Offset(-scrollOffset.X, -scrollOffset.Y);
     }
 
     /// <summary>

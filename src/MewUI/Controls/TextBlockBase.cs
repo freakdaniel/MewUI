@@ -43,6 +43,8 @@ public abstract partial class TextBlockBase : TextElement, IDisposable
     private double? _lastWrapMeasureWidth;
     private readonly List<TextPaintSpan> _paintSpans = [];
     private readonly List<GeometryStyleRun> _geometryRuns = [];
+    private ReadOnlyMemory<TextPaintSpan> _cachedPaintSpans;
+    private long _paintSpansRevision = -1;
 
     private ITextLayout? _layout;
     private double _layoutMaxWidth;
@@ -123,7 +125,13 @@ public abstract partial class TextBlockBase : TextElement, IDisposable
         _lastWrapMeasureWidth = null;
         _layout = null;
         _textRevision++;
+        _paintSpansRevision = -1;
     }
+
+    /// <summary>
+    /// Marks the cached paint spans stale without rebuilding the text layout.
+    /// </summary>
+    protected void InvalidateTextPaintSpans() => _paintSpansRevision = -1;
 
     // Rendering resolves wrapping every frame, so the scan is kept until the text revision moves.
     private bool HasExplicitLineBreaks
@@ -308,13 +316,32 @@ public abstract partial class TextBlockBase : TextElement, IDisposable
             _ => bounds.Y
         };
 
-        // Recomputed per frame rather than cached with the layout: the access-key underline appears
-        // and disappears with the Alt state while the layout itself is unchanged.
-        _paintSpans.Clear();
-        OnGetTextPaintSpans(_paintSpans);
-        var spans = _paintSpans.Count == 0
-            ? ReadOnlyMemory<TextPaintSpan>.Empty
-            : _paintSpans.ToArray();
+        // Dynamic span providers (for example AccessText, whose underline follows the Alt state)
+        // still run per frame. Stable providers retain their flattened immutable array so a scroll
+        // repaint does not allocate once per visible text block.
+        ReadOnlyMemory<TextPaintSpan> spans;
+        if (CanCacheTextPaintSpans)
+        {
+            if (_paintSpansRevision != _textRevision)
+            {
+                _paintSpans.Clear();
+                OnGetTextPaintSpans(_paintSpans);
+                _cachedPaintSpans = _paintSpans.Count == 0
+                    ? ReadOnlyMemory<TextPaintSpan>.Empty
+                    : _paintSpans.ToArray();
+                _paintSpansRevision = _textRevision;
+            }
+
+            spans = _cachedPaintSpans;
+        }
+        else
+        {
+            _paintSpans.Clear();
+            OnGetTextPaintSpans(_paintSpans);
+            spans = _paintSpans.Count == 0
+                ? ReadOnlyMemory<TextPaintSpan>.Empty
+                : _paintSpans.ToArray();
+        }
 
         using (DevToolsGate.IsSupported ? ProfilerMarkers.TextDraw.Auto() : default)
         {
@@ -349,6 +376,11 @@ public abstract partial class TextBlockBase : TextElement, IDisposable
     protected virtual void OnGetTextPaintSpans(IList<TextPaintSpan> output)
     {
     }
+
+    /// <summary>
+    /// Gets whether paint spans are stable until the text layout revision changes.
+    /// </summary>
+    protected virtual bool CanCacheTextPaintSpans => false;
 
     /// <summary>
     /// Contributes per-range font overrides. Ranges index <see cref="DisplayText"/>, must not

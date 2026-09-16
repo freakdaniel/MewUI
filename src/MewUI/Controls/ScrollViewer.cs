@@ -110,7 +110,10 @@ public sealed class ScrollViewer : ContentControl
             _scroll.DpiScale = DpiScale;
             if (_scroll.SetOffsetDip(1, value))
             {
-                InvalidateArrange();
+                // A pure offset change moves already-arranged pixels. Keep it on the
+                // render path; ArrangeContent only needs to run when the extent or the
+                // viewport changes.
+                InvalidateVisual();
             }
         }
     }
@@ -137,7 +140,7 @@ public sealed class ScrollViewer : ContentControl
             _scroll.DpiScale = DpiScale;
             if (_scroll.SetOffsetDip(0, value))
             {
-                InvalidateArrange();
+                InvalidateVisual();
             }
         }
     }
@@ -442,9 +445,12 @@ public sealed class ScrollViewer : ContentControl
             }
             else
             {
+                // Keep the content in stable document coordinates. ScrollViewer.RenderSubtree
+                // applies the offset through the graphics transform, which avoids re-arranging
+                // the entire content tree for every wheel/trackpad update.
                 content.Arrange(new Rect(
-                    viewport.X - _scroll.GetOffsetDip(0),
-                    viewport.Y - _scroll.GetOffsetDip(1),
+                    viewport.X,
+                    viewport.Y,
                     Math.Max(_extent.Width, viewport.Width),
                     Math.Max(_extent.Height, viewport.Height)));
             }
@@ -481,7 +487,42 @@ public sealed class ScrollViewer : ContentControl
         {
             context.SetClip(clip);
         }
-        Content?.Render(context);
+
+        var content = Content;
+        if (content is UIElement uiContent && content is not IScrollContent)
+        {
+            // Bounds remain in document coordinates, so both the backend cull rectangle
+            // and the retained visual tree need to see the same render-only translation.
+            // GraphicsContextBase.Translate also carries its primitive cull rectangle into
+            // the content's coordinate space.
+            var offsetX = _scroll.GetOffsetDip(0);
+            var offsetY = _scroll.GetOffsetDip(1);
+            var contentCull = new Rect(
+                viewport.X + offsetX,
+                viewport.Y + offsetY,
+                viewport.Width,
+                viewport.Height);
+            var previousCull = UIElement.RenderCullViewport;
+            // The parent cull is in the coordinate space active before this viewer's translation.
+            // Move it into document coordinates before intersecting it with the content viewport;
+            // intersecting the two spaces directly would leave only the overlap near the origin.
+            UIElement.RenderCullViewport = previousCull is Rect parentCull
+                ? parentCull.Offset(offsetX, offsetY).Intersect(contentCull)
+                : contentCull;
+            context.Translate(-offsetX, -offsetY);
+            try
+            {
+                uiContent.Render(context);
+            }
+            finally
+            {
+                UIElement.RenderCullViewport = previousCull;
+            }
+        }
+        else
+        {
+            content?.Render(context);
+        }
         context.Restore();
 
         // Bars render on top (overlay).
@@ -522,7 +563,10 @@ public sealed class ScrollViewer : ContentControl
 
         if (Content is UIElement uiContent)
         {
-            var hit = uiContent.HitTest(point);
+            var contentPoint = uiContent is IScrollContent
+                ? point
+                : point.Offset(_scroll.GetOffsetDip(0), _scroll.GetOffsetDip(1));
+            var hit = uiContent.HitTest(contentPoint);
             if (hit != null)
             {
                 return hit;
@@ -629,7 +673,9 @@ public sealed class ScrollViewer : ContentControl
         _scroll.DpiScale = DpiScale;
         if (_scroll.ScrollByDip(axis, dip))
         {
-            InvalidateArrange();
+            // The content is already arranged in document coordinates. Scrolling only
+            // changes the render transform and must not schedule a layout pass.
+            InvalidateVisual();
         }
         SyncBars();
         InvalidateVisual();
@@ -643,6 +689,19 @@ public sealed class ScrollViewer : ContentControl
         {
             window.ReevaluateMouseOver();
         }
+    }
+
+    /// <summary>
+    /// Returns whether <paramref name="element"/> is in the content branch whose pixels are
+    /// translated by this viewer. Scrollbar parts are children of the viewer too, but they stay
+    /// fixed while the content moves.
+    /// </summary>
+    internal bool IsScrollableContentDescendant(Element element)
+    {
+        var content = Content;
+        return content is not IScrollContent &&
+            content != null &&
+            (ReferenceEquals(content, element) || element.IsDescendantOf(content));
     }
 
     private void ArrangeBars(Rect viewport)

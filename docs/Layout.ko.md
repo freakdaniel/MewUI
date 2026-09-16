@@ -152,13 +152,13 @@ Render는 Bounds와 현재 visual 상태로 실제 픽셀을 그립니다.
 
 ### 오프셋
 
-`ScrollViewer.HorizontalOffset`/`VerticalOffset` setter는 `InvalidateArrange()`만 호출하고 `InvalidateMeasure()`는 호출하지 않습니다. 즉 순수 오프셋 변경은 Arrange+Render로만 처리됩니다. Extent/Viewport(Measure가 필요한 값)는 콘텐츠나 가용 크기가 실제로 바뀔 때만 다시 계산됩니다.
+`ScrollViewer.HorizontalOffset`/`VerticalOffset` setter는 `InvalidateVisual()`만 호출하고 `InvalidateMeasure()`나 `InvalidateArrange()`는 호출하지 않습니다. 즉 순수 오프셋 변경은 Render만으로 처리되며 콘텐츠는 안정적인 문서 좌표에 배치된 상태를 유지합니다. Extent/Viewport(Measure가 필요한 값)는 콘텐츠나 가용 크기가 실제로 바뀔 때만 다시 계산됩니다.
 
 `ScrollViewer.MeasureContent`는 의도적으로 `_scroll` 상태(메트릭, 오프셋)나 스크롤바의 `IsVisible`/`ViewportSize`/`Max`를 건드리지 않습니다. Measure는 가상의/제약 없는 크기로 호출될 수 있으므로(예: 팝업 소유자가 매 프레임 natural size를 확인하는 경우), 거기서 공유 스크롤 상태를 바꾸면 화면에 표시된 스크롤바가 깨지거나 사용자의 스크롤 오프셋이 리셋될 수 있습니다. 이런 변경은 모두 `ArrangeContent`에서 이루어지며, 이 시점의 뷰포트는 실제로 표시되는 크기를 반영합니다.
 
 ### 스크롤 중 업데이트되는 것
 
-1) `ArrangeContent`가 일반 콘텐츠는 `viewport - offset` 위치에 자식을 배치하고, 가상화/스크롤 인지 콘텐츠(`IScrollContent`)는 `SetViewport`/`SetOffset`을 호출한 뒤 뷰포트 사각형 그대로 자식을 배치합니다(이 경우 자식은 Arrange로 이동되는 게 아니라 주어진 오프셋을 바탕으로 내부적으로 스스로 위치를 잡습니다).
+1) `ArrangeContent`가 일반 콘텐츠는 안정적인 문서 좌표의 뷰포트 사각형에 자식을 배치하고, 가상화/스크롤 인지 콘텐츠(`IScrollContent`)는 `SetViewport`/`SetOffset`을 호출한 뒤 뷰포트 사각형 그대로 자식을 배치합니다(이 경우 자식은 Arrange로 이동되는 게 아니라 주어진 오프셋을 바탕으로 내부적으로 스스로 위치를 잡습니다).
 2) 콘텐츠는 뷰포트 클립 아래에서 렌더링됩니다(위 클립 규칙 참고).
 3) 스크롤바의 range/value가 현재 오프셋/뷰포트와 동기화됩니다(`SyncBars`).
 
@@ -167,4 +167,4 @@ Render는 Bounds와 현재 visual 상태로 실제 픽셀을 그립니다.
 - Measure/Arrange 중 값 비교 없이 레이아웃 영향 속성을 계속 set: 잘해야 재측정 결과가 버려지는 낭비고([Measure 규칙](#규칙) 참고), 최악의 경우 값이 안정화되지 않아 요소가 매 프레임 스스로를 다시 dirty로 만들어 update pass가 계속 반복됩니다.
 - `OnRender`에서 `InvalidateMeasure()`/`InvalidateArrange()`를 유발: 현재 프레임 자체는 안전하지만(Render는 중단되지 않음) 바로 다음에 새 update pass가 예약되며, 조건 없이 이렇게 하면 매 프레임 반복됩니다.
 - 캐시된 `GetDpi()`/`GetDpiCached()`를 쓰지 않고 핫 패스에서 직접 `Parent`를 타고 올라가며 DPI를 다시 계산.
-- 오프셋만 바뀌었는데 스크롤할 때마다 `InvalidateMeasure()`를 호출: `ScrollViewer`처럼 오프셋 전용 변경(`InvalidateArrange()`)만 사용해야 합니다.
+- 오프셋만 바뀌었는데 스크롤할 때마다 `InvalidateMeasure()`/`InvalidateArrange()`를 호출: `ScrollViewer`처럼 오프셋 전용 변경(`InvalidateVisual()`)만 사용해야 합니다.
